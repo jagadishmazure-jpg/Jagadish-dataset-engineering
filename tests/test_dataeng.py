@@ -8,11 +8,10 @@ from dataeng import (
     AnnotationPipeline,
     ConversationFilter,
     Deduplicator,
-    decontaminate,
     SyntheticGenerator,
     build_dataset_card,
+    decontaminate,
 )
-
 
 # ---------------------------------------------------------------- annotate
 OPTIONS = ["positive", "neutral", "negative"]
@@ -442,3 +441,35 @@ def test_card_optional_fields_have_sane_defaults():
     del m["license"]
     md = build_dataset_card(m)
     assert "unspecified — confirm before use" in md
+
+
+def test_chi2_sf_matches_known_critical_values():
+    import pytest
+
+    from dataeng.annotate import chi2_sf
+
+    # Standard table values: chi2(0.95, df) critical points and a few exact cases.
+    assert chi2_sf(3.841459, 1) == pytest.approx(0.05, abs=1e-6)
+    assert chi2_sf(5.991465, 2) == pytest.approx(0.05, abs=1e-6)
+    assert chi2_sf(9.210340, 2) == pytest.approx(0.01, abs=1e-6)
+    assert chi2_sf(10.0, 2) == pytest.approx(0.006737947, abs=1e-8)  # exp(-x/2) for df=2
+    assert chi2_sf(0.5, 3) == pytest.approx(0.918891, abs=1e-5)
+    assert chi2_sf(0.0, 4) == 1.0
+
+
+def test_skew_report_carries_df_and_p_value():
+    from dataeng.annotate import AnnotationPipeline
+
+    p = AnnotationPipeline(["a", "b", "c"], overlap=3)
+    for i in range(12):
+        p.add_task(f"t{i}", "rate", ["pos", "neu", "neg"])
+    p.assign()
+    for i in range(12):
+        honest = ["pos", "neu", "neg"][i % 3]
+        p.submit_label(f"t{i}", "a", honest)
+        p.submit_label(f"t{i}", "b", honest)
+        p.submit_label(f"t{i}", "c", "pos")  # always-positive labeler
+    by_id = {r["labeler_id"]: r for r in p.detect_skew()}
+    assert by_id["c"]["df"] == 2
+    assert by_id["c"]["flagged"] and by_id["c"]["p_value"] < 0.01
+    assert not by_id["a"]["flagged"] and by_id["a"]["p_value"] > 0.05

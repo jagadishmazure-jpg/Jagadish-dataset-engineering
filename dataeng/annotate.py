@@ -6,9 +6,51 @@ adjudicated outcome is traceable back to its human sources.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from collections import Counter
 import math
+from collections import Counter
+from dataclasses import dataclass
+
+
+def chi2_sf(x: float, df: int) -> float:
+    """P(X >= x) for a chi-square variable with ``df`` degrees of freedom.
+
+    Regularized upper incomplete gamma Q(df/2, x/2): series for small x,
+    Lentz continued fraction otherwise (Numerical Recipes 6.2). Stdlib only.
+    """
+    if df < 1:
+        raise ValueError("df must be >= 1")
+    if x <= 0:
+        return 1.0
+    a, z = df / 2.0, x / 2.0
+    gln = math.lgamma(a)
+    if z < a + 1:
+        term = total = 1.0 / a
+        ap = a
+        for _ in range(500):
+            ap += 1
+            term *= z / ap
+            total += term
+            if abs(term) < abs(total) * 1e-15:
+                break
+        return max(0.0, 1.0 - total * math.exp(-z + a * math.log(z) - gln))
+    tiny = 1e-300
+    b = z + 1 - a
+    c = 1 / tiny
+    d = 1 / b
+    h = d
+    for i in range(1, 500):
+        an = -i * (i - a)
+        b += 2
+        d = an * d + b
+        d = tiny if abs(d) < tiny else d
+        c = b + an / c
+        c = tiny if abs(c) < tiny else c
+        d = 1 / d
+        delta = d * c
+        h *= delta
+        if abs(delta - 1) < 1e-15:
+            break
+    return min(1.0, math.exp(-z + a * math.log(z) - gln) * h)
 
 
 @dataclass(frozen=True)
@@ -173,6 +215,10 @@ class AnnotationPipeline:
                 "chi2": round(chi2, 3),
                 "threshold": self.skew_threshold,
                 "flagged": chi2 > self.skew_threshold,
+                # df and p-value make the fixed threshold interpretable: the
+                # same chi2 means less with more label options.
+                "df": len(vocab) - 1,
+                "p_value": round(chi2_sf(chi2, len(vocab) - 1), 6),
                 "distribution": {v: obs.get(v, 0) for v in vocab},
             })
         return results

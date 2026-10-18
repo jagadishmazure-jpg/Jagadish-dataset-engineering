@@ -17,3 +17,5 @@ htmlcov/
 .DS_Store
 .idea/
 .vscode/
+.ruff_cache/
+*.pdf
