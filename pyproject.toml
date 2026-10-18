@@ -1,0 +1,16 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "jagadish-dataset-engineering"
+version = "0.1.0"
+description = "Data pipelines for SFT and eval quality: annotation, filtering, dedup, decontamination, synthesis, dataset cards."
+readme = "README.md"
+requires-python = ">=3.10"
+
+[tool.hatch.build.targets.wheel]
+packages = ["dataeng"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
